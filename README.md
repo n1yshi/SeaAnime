@@ -1,0 +1,1 @@
+Visit https://sea.n1yshi.dev and search for the anime/movie you wanna watch and click on it, after that select the episode and it will show you  the stream options, you can choose one of them, if one does not work use another one.
