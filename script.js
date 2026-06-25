@@ -8,6 +8,7 @@ let epData = null;
 let audio = 'sub';
 let tmdbId = null;
 let tmdbType = null;
+let tmdbSeason = 1;
 
 const searchInput = document.getElementById('search-input');
 const resultsSection = document.getElementById('results-section');
@@ -193,6 +194,7 @@ async function openAnime(id) {
   const title = infoData?.title?.english || infoData?.title?.romaji || '';
   tmdbId = null;
   tmdbType = null;
+  tmdbSeason = 1;
   if (title) {
     try {
       const tmdbRes = await fetch(`${API}/movie/search?query=${encodeURIComponent(title)}&page=1`);
@@ -205,6 +207,44 @@ async function openAnime(id) {
         }
       }
     } catch {}
+
+    // Fallback: strip season suffixes ("Season 2", "S2", "Part X", trailing numbers)
+    let baseTitle = title;
+    if (!tmdbId) {
+      baseTitle = title
+        .replace(/[-–—]\s*(?:\d+(?:st|nd|rd|th)?\s*Season|Season\s*\d+|S\s*\d+|Part\s*\d+)/i, '')
+        .replace(/(?:\d+(?:st|nd|rd|th)?\s*Season|Season\s*\d+|S\s*\d+|Part\s*\d+)/i, '')
+        .replace(/\s+\d+$/, '')
+        .trim();
+      if (baseTitle && baseTitle !== title) {
+        try {
+          const tmdbRes2 = await fetch(`${API}/movie/search?query=${encodeURIComponent(baseTitle)}&page=1`);
+          if (tmdbRes2.ok) {
+            const tmdbData2 = await tmdbRes2.json();
+            const tmdbResults2 = tmdbData2.data?.results || [];
+            if (tmdbResults2.length) {
+              tmdbId = tmdbResults2[0].id;
+              tmdbType = tmdbResults2[0].mediaType || 'tv';
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Extract TMDB season number from title
+    if (tmdbId && tmdbType === 'tv') {
+      let seasonNum = 1;
+      let m = title.match(/(?:Season|S|Part)\s*(\d+)/i);
+      if (!m) m = title.match(/(\d+)\s*(?:st|nd|rd|th)?\s*Season/i);
+      if (m) {
+        seasonNum = parseInt(m[1]);
+      } else if (baseTitle && baseTitle !== title) {
+        const diff = title.replace(baseTitle, '').trim();
+        const n = diff.match(/(\d+)/);
+        if (n) seasonNum = parseInt(n[1]);
+      }
+      tmdbSeason = seasonNum;
+    }
   }
 
   renderAnimeDetail(infoData, epDataRaw);
@@ -373,7 +413,7 @@ async function fetchTmdbStreams() {
   if (!list) return;
 
   try {
-    const res = await fetch(`${API}/movie/streams?type=${tmdbType}&id=${tmdbId}` + (tmdbType === 'tv' ? '&season=1&episode=' + epData.number : ''));
+    const res = await fetch(`${API}/movie/streams?type=${tmdbType}&id=${tmdbId}` + (tmdbType === 'tv' ? '&season=' + tmdbSeason + '&episode=' + epData.number : ''));
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const embeds = data?.data?.embeds || data?.embeds || {};
