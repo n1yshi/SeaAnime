@@ -6,6 +6,8 @@ let timeout = null;
 let anilistId = null;
 let epData = null;
 let audio = 'sub';
+let tmdbId = null;
+let tmdbType = null;
 
 const searchInput = document.getElementById('search-input');
 const resultsSection = document.getElementById('results-section');
@@ -60,21 +62,8 @@ async function doSearch() {
   }
 }
 
-async function searchAnime(q) {
-  const res = await fetch(`${API}/search?query=${encodeURIComponent(q)}&page=1&per_page=50`);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const data = await res.json();
-  const items = data.results || [];
-
-  if (!items.length) {
-    resultsSection.innerHTML = '<div class="no-results">No results found</div>';
-    return;
-  }
-
-  let html = '<div class="result-count">' + items.length + ' results</div>' +
-    '<div class="table-wrap"><table class="result-table">' +
-    '<thead><tr><th>Title</th><th>Episodes</th><th>Score</th><th>Format</th><th>Year</th></tr></thead><tbody>';
-
+function renderAnimeRows(items) {
+  let rows = '';
   items.forEach(m => {
     const title = m.title?.english || m.title?.romaji || 'unknown';
     const cover = m.coverImage?.large || '';
@@ -90,15 +79,58 @@ async function searchAnime(q) {
       else cls = 'score-low';
     }
 
-    html += '<tr data-id="' + m.id + '" data-cover="' + escape(cover) + '">' +
+    rows += '<tr data-id="' + m.id + '" data-cover="' + escape(cover) + '">' +
       '<td class="title-cell" title="' + escape(title) + '">' + escape(title) + '</td>' +
       '<td>' + ep + '</td>' +
       '<td class="score-cell ' + cls + '">' + score + '</td>' +
       '<td>' + format + '</td>' +
       '<td>' + year + '</td></tr>';
   });
+  return rows;
+}
 
-  html += '</tbody></table></div>';
+function renderMovieRows(items) {
+  let rows = '';
+  items.forEach(m => {
+    const title = m.title || m.originalTitle || 'unknown';
+    const poster = m.posterPath || '';
+    const type = m.mediaType || '-';
+    const year = m.releaseDate ? m.releaseDate.substring(0, 4) : '';
+    const vote = m.voteAverage != null ? Number(m.voteAverage).toFixed(1) : '-';
+
+    let cls = 'score-none';
+    if (vote !== '-') {
+      if (vote >= 7) cls = 'score-high';
+      else if (vote >= 5) cls = 'score-good';
+      else cls = 'score-low';
+    }
+
+    rows += '<tr data-id="' + m.id + '" data-type="' + type + '" data-cover="' + escape(poster) + '">' +
+      '<td class="title-cell" title="' + escape(title) + '">' + escape(title) + '</td>' +
+      '<td>' + type + '</td>' +
+      '<td class="score-cell ' + cls + '">' + vote + '</td>' +
+      '<td>' + year + '</td></tr>';
+  });
+  return rows;
+}
+
+async function searchAnime(q) {
+  const res = await fetch(`${API}/search?query=${encodeURIComponent(q)}&page=1&per_page=50`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  const items = data.results || [];
+
+  if (!items.length) {
+    resultsSection.innerHTML = '<div class="no-results">No results found</div>';
+    return;
+  }
+
+  let html = '<div class="result-count">' + items.length + ' results</div>' +
+    '<div class="table-wrap"><table class="result-table">' +
+    '<thead><tr><th>Title</th><th>Episodes</th><th>Score</th><th>Format</th><th>Year</th></tr></thead><tbody>' +
+    renderAnimeRows(items) +
+    '</tbody></table></div>';
+
   resultsSection.innerHTML = html;
 
   resultsSection.querySelectorAll('.result-table tbody tr').forEach(row => {
@@ -122,30 +154,10 @@ async function searchMovie(q) {
 
   let html = '<div class="result-count">' + items.length + ' results</div>' +
     '<div class="table-wrap"><table class="result-table">' +
-    '<thead><tr><th>Title</th><th>Type</th><th>Rating</th><th>Year</th></tr></thead><tbody>';
+    '<thead><tr><th>Title</th><th>Type</th><th>Rating</th><th>Year</th></tr></thead><tbody>' +
+    renderMovieRows(items) +
+    '</tbody></table></div>';
 
-  items.forEach(m => {
-    const title = m.title || m.originalTitle || 'unknown';
-    const poster = m.posterPath || '';
-    const type = m.mediaType || '-';
-    const year = m.releaseDate ? m.releaseDate.substring(0, 4) : '';
-    const vote = m.voteAverage != null ? Number(m.voteAverage).toFixed(1) : '-';
-
-    let cls = 'score-none';
-    if (vote !== '-') {
-      if (vote >= 7) cls = 'score-high';
-      else if (vote >= 5) cls = 'score-good';
-      else cls = 'score-low';
-    }
-
-    html += '<tr data-id="' + m.id + '" data-type="' + type + '" data-cover="' + escape(poster) + '">' +
-      '<td class="title-cell" title="' + escape(title) + '">' + escape(title) + '</td>' +
-      '<td>' + type + '</td>' +
-      '<td class="score-cell ' + cls + '">' + vote + '</td>' +
-      '<td>' + year + '</td></tr>';
-  });
-
-  html += '</tbody></table></div>';
   resultsSection.innerHTML = html;
 
   resultsSection.querySelectorAll('.result-table tbody tr').forEach(row => {
@@ -161,7 +173,7 @@ function showResults() {
   resultsSection.style.display = '';
 }
 
-// === Anime Detail ===
+
 async function openAnime(id) {
   anilistId = id;
   resultsSection.style.display = 'none';
@@ -176,6 +188,23 @@ async function openAnime(id) {
   if (!infoData && !epDataRaw) {
     detailSection.innerHTML = '<div class="error">Failed to load data</div>';
     return;
+  }
+
+  const title = infoData?.title?.english || infoData?.title?.romaji || '';
+  tmdbId = null;
+  tmdbType = null;
+  if (title) {
+    try {
+      const tmdbRes = await fetch(`${API}/movie/search?query=${encodeURIComponent(title)}&page=1`);
+      if (tmdbRes.ok) {
+        const tmdbData = await tmdbRes.json();
+        const tmdbResults = tmdbData.data?.results || [];
+        if (tmdbResults.length) {
+          tmdbId = tmdbResults[0].id;
+          tmdbType = tmdbResults[0].mediaType || 'tv';
+        }
+      }
+    } catch {}
   }
 
   renderAnimeDetail(infoData, epDataRaw);
@@ -250,7 +279,7 @@ function renderAnimeDetail(info, episodesRaw) {
       '</div>' +
     '</div>';
 
-  // Episodes
+  
   const all = flatten(episodesRaw);
   const grouped = {};
   all.forEach(ep => {
@@ -292,7 +321,7 @@ function renderAnimeDetail(info, episodesRaw) {
 async function showAnimeStreams(ep) {
   epData = ep;
 
-  const epHtml =
+  let epHtml =
     '<button class="detail-back" id="stream-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg> Back to episodes</button>' +
     '<div class="stream-section">' +
       '<div class="stream-header">' +
@@ -301,9 +330,21 @@ async function showAnimeStreams(ep) {
           '<button class="audio-btn active" data-audio="sub">Sub</button>' +
           '<button class="audio-btn" data-audio="dub">Dub</button>' +
         '</div>' +
-      '</div>' +
-      '<div class="embed-list" id="embed-list"><div class="stream-placeholder">Loading streams...</div></div>' +
-    '</div>';
+      '</div>';
+
+  if (tmdbId) {
+    epHtml += '<div class="embed-list" id="tmdb-embed-list"><div class="stream-placeholder">Loading TMDB streams...</div></div>' +
+      '<div class="collapse-section">' +
+        '<div class="collapse-toggle" onclick="toggleCollapse(this)">Anime providers <span class="collapse-arrow">▶</span></div>' +
+        '<div class="collapse-content">' +
+          '<div class="embed-list" id="embed-list"><div class="stream-placeholder">Loading streams...</div></div>' +
+        '</div>' +
+      '</div>';
+  } else {
+    epHtml += '<div class="embed-list" id="embed-list"><div class="stream-placeholder">Loading streams...</div></div>';
+  }
+
+  epHtml += '</div>';
 
   detailSection.innerHTML = epHtml;
 
@@ -312,7 +353,8 @@ async function showAnimeStreams(ep) {
       document.querySelectorAll('.audio-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       audio = btn.dataset.audio;
-      document.getElementById('embed-list').innerHTML = '<div class="stream-placeholder">Loading streams...</div>';
+      const el = document.getElementById('embed-list');
+      if (el) el.innerHTML = '<div class="stream-placeholder">Loading streams...</div>';
       fetchStreams();
     });
   });
@@ -321,7 +363,31 @@ async function showAnimeStreams(ep) {
     openAnime(anilistId);
   });
 
-  fetchStreams();
+  const promises = [fetchStreams()];
+  if (tmdbId) promises.push(fetchTmdbStreams());
+  await Promise.all(promises);
+}
+
+async function fetchTmdbStreams() {
+  const list = document.getElementById('tmdb-embed-list');
+  if (!list) return;
+
+  try {
+    const res = await fetch(`${API}/movie/streams?type=${tmdbType}&id=${tmdbId}` + (tmdbType === 'tv' ? '&season=1&episode=' + epData.number : ''));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const embeds = data?.data?.embeds || data?.embeds || {};
+    const entries = Object.entries(embeds).filter(([, v]) => typeof v === 'string' && v.startsWith('http'));
+
+    if (entries.length) {
+      list.innerHTML = entries.map(([provider, url]) => renderStreamBtn(url, provider)).join('');
+      initHlsPlayers();
+    } else {
+      list.innerHTML = '<div class="stream-placeholder">No TMDB streams available</div>';
+    }
+  } catch {
+    list.innerHTML = '<div class="stream-placeholder">No TMDB streams available</div>';
+  }
 }
 
 async function fetchStreams() {
@@ -353,12 +419,9 @@ async function fetchStreams() {
 
   list.innerHTML = embeds.map(s => {
       const label = s._p + (s.server ? ' | ' + s.server : '');
-      const url = s.url;
-      if (!url) return '';
-      return '<a href="' + url + '" target="_blank" rel="noopener" class="embed-btn">' +
-        '<span><span class="provider-label">' + label + '</span></span>' +
-        '<span class="play-arrow">Play &rarr;</span></a>';
+      return renderStreamBtn(s.url, label);
     }).join('');
+  initHlsPlayers();
 }
 
 function extract(data) {
@@ -371,7 +434,7 @@ function extract(data) {
   return null;
 }
 
-// === Movie / TV Detail ===
+
 let tvState = null;
 
 async function openMovie(id, type) {
@@ -390,7 +453,11 @@ async function openMovie(id, type) {
 
   if (type === 'tv') {
     tvState = { id, type };
-    renderTVDetail(infoData);
+    const seasonsData = await fetch(`${API}/movie/seasons?type=tv&id=${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null);
+    const seasons = seasonsData?.data?.seasons || null;
+    renderTVDetail(infoData, seasons);
   } else {
     tvState = null;
     const streamsData = await fetch(`${API}/movie/streams?type=movie&id=${id}`)
@@ -427,9 +494,7 @@ function renderMovieDetail(infoData, streamsData) {
   if (embedEntries.length) {
     html += '<div class="detail-episodes"><h3>Watch</h3><div class="embed-list">';
     embedEntries.forEach(([provider, url]) => {
-      html += '<a href="' + url + '" target="_blank" rel="noopener" class="embed-btn">' +
-        '<span><span class="provider-label">' + provider + '</span></span>' +
-        '<span class="play-arrow">Play &rarr;</span></a>';
+      html += renderStreamBtn(url, provider);
     });
     html += '</div></div>';
   } else {
@@ -437,9 +502,10 @@ function renderMovieDetail(infoData, streamsData) {
   }
 
   detailSection.innerHTML = html;
+  initHlsPlayers();
 }
 
-function renderTVDetail(infoData) {
+function renderTVDetail(infoData, seasonsFallback) {
   const main = infoData?.data || infoData?.results || infoData || {};
   const title = main.title || main.name || main.originalTitle || main.original_name || 'Unknown';
   const desc = main.overview || main.description || 'No description';
@@ -448,7 +514,23 @@ function renderTVDetail(infoData) {
   const rating = main.voteAverage ?? main.vote_average;
   const ratingStr = rating != null ? Number(rating).toFixed(1) : '-';
   const meta = ['TV', year, ratingStr + ' / 10'].filter(Boolean).join(' | ');
-  const seasons = (main.seasons || []).filter(s => s.seasonNumber > 0).sort((a, b) => a.seasonNumber - b.seasonNumber);
+
+  let seasons = (main.seasons || []).filter(s => {
+    const n = s.seasonNumber ?? s.season_number;
+    return n != null && n > 0;
+  }).map(s => ({
+    seasonNumber: s.seasonNumber ?? s.season_number,
+    name: s.name || 'Season ' + (s.seasonNumber ?? s.season_number),
+    episodeCount: s.episodeCount ?? s.episode_count,
+  })).sort((a, b) => a.seasonNumber - b.seasonNumber);
+
+  if (seasons.length <= 1 && seasonsFallback?.length > 1) {
+    seasons = seasonsFallback;
+  } else if (!seasons.length && main.numberOfSeasons > 1) {
+    for (let i = 1; i <= main.numberOfSeasons; i++) {
+      seasons.push({ seasonNumber: i, name: 'Season ' + i, episodeCount: '?' });
+    }
+  }
 
   let html =
     '<button class="detail-back" onclick="showResults()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg> Back to results</button>' +
@@ -520,11 +602,12 @@ async function showTVStreams(id, season, ep) {
   container.innerHTML = '<div class="detail-loading"><div class="spinner"></div>Loading streams...</div>';
 
   try {
-    const res = await fetch(`${API}/movie/streams?type=tv&id=${id}&season=${season}&episode=${ep}`);
+    const res = await fetch(`${API}/movie/streams?type=tv&id=${id}&season=${season}&episode=${ep}&resolve=true`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const embeds = data?.data?.embeds || data?.embeds || {};
     const entries = Object.entries(embeds).filter(([, v]) => typeof v === 'string' && v.startsWith('http'));
+    const resolved = data?.data?.resolvedStreams || {};
 
     let html =
       '<div class="stream-section">' +
@@ -532,22 +615,25 @@ async function showTVStreams(id, season, ep) {
           '<div class="stream-ep-label">S' + season + ' E' + ep + '</div>' +
         '</div>';
 
-    if (entries.length) {
+    if (entries.length || Object.keys(resolved).length) {
       html += '<div class="embed-list">';
       entries.forEach(([provider, url]) => {
-        html += '<a href="' + url + '" target="_blank" rel="noopener" class="embed-btn">' +
-          '<span><span class="provider-label">' + provider + '</span></span>' +
-          '<span class="play-arrow">Play &rarr;</span></a>';
+        html += renderStreamBtn(url, provider);
       });
+      for (const [, streams] of Object.entries(resolved)) {
+        for (const s of streams) {
+          if (s.type === 'hls' || s.type === 'mp4') {
+            html += renderStreamBtn(s.url, 'donkey');
+          }
+        }
+      }
       html += '</div>';
     } else {
       html += '<div class="stream-placeholder">No streams available</div>';
     }
 
-    html += '</div>' +
-      '<button class="detail-back" id="tv-stream-back" style="margin-top:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg> Back to episodes</button>';
-
     container.innerHTML = html;
+    initHlsPlayers();
 
     document.getElementById('tv-stream-back').addEventListener('click', () => {
       if (tvState) fetchTVEpisodes(tvState.id, season);
@@ -557,12 +643,51 @@ async function showTVStreams(id, season, ep) {
   }
 }
 
+function toggleCollapse(btn) {
+  const content = btn.nextElementSibling;
+  if (!content) return;
+  content.classList.toggle('expanded');
+  btn.querySelector('.collapse-arrow').textContent =
+    content.classList.contains('expanded') ? '▼' : '▶';
+}
+
 function escape(s) {
   if (!s) return '';
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Cover popup
+
+function isM3u8(url) {
+  return url && url.includes('.m3u8');
+}
+
+function renderStreamBtn(url, label) {
+  if (!url) return '';
+  if (isM3u8(url)) {
+    return '<div class="hls-player" data-url="' + url + '">' +
+      '<div class="hls-header"><span class="provider-label">' + label + '</span></div>' +
+      '<video controls width="100%" preload="metadata"></video></div>';
+  }
+  return '<a href="' + url + '" target="_blank" rel="noopener" class="embed-btn">' +
+    '<span><span class="provider-label">' + label + '</span></span>' +
+    '<span class="play-arrow">Play &rarr;</span></a>';
+}
+
+function initHlsPlayers() {
+  document.querySelectorAll('.hls-player').forEach(el => {
+    const video = el.querySelector('video');
+    const url = el.dataset.url;
+    if (!video || !url) return;
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = url;
+    } else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(url);
+      hls.attachMedia(video);
+    }
+  });
+}
+
 const coverPopup = document.getElementById('cover-popup');
 
 function showCoverPopup(e) {
