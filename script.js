@@ -650,6 +650,7 @@ async function showTVStreams(id, season, ep) {
     const resolved = data?.data?.resolvedStreams || {};
 
     let html =
+      '<button class="detail-back" id="tv-stream-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg> Back to episodes</button>' +
       '<div class="stream-section">' +
         '<div class="stream-header">' +
           '<div class="stream-ep-label">S' + season + ' E' + ep + '</div>' +
