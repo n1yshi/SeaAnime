@@ -14,12 +14,195 @@ const searchInput = document.getElementById('search-input');
 const resultsSection = document.getElementById('results-section');
 const detailSection = document.getElementById('detail-section');
 
+/* ─── Hero Slider ──────────────────────────────────────────── */
+
+let heroIndex = 0;
+let heroTimer = null;
+let heroData = [];
+
+async function fetchTrending() {
+  try {
+    const res = await fetch(`${API}/trending?page=1&per_page=20`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return data.results || [];
+  } catch {
+    return [];
+  }
+}
+
+function renderHeroSlider(items) {
+  const slides = document.getElementById('hero-slides');
+  const info = document.getElementById('hero-info');
+  const dots = document.getElementById('hero-dots');
+
+  if (!items.length) {
+    document.getElementById('hero-slider').style.display = 'none';
+    return;
+  }
+
+  heroData = items.slice(0, 6);
+
+  slides.innerHTML = heroData.map((m, i) => {
+    const img = m.bannerImage || m.coverImage?.extraLarge || m.coverImage?.large || '';
+    return '<div class="hero-slide' + (i === 0 ? ' active' : '') + '">' +
+      '<img src="' + img + '" alt="">' +
+    '</div>';
+  }).join('');
+
+  showHeroSlide(0, info, dots);
+  startHeroTimer(info, dots);
+}
+
+function showHeroSlide(index, info, dots) {
+  heroIndex = index;
+
+  document.querySelectorAll('.hero-slide').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
+  });
+
+  const m = heroData[index];
+  const title = m.title?.romaji || m.title?.english || '?';
+  const score = m.averageScore ? Math.round(m.averageScore / 10) : null;
+  const desc = (m.description || '').replace(/<[^>]*>/g, '').slice(0, 280);
+
+  let tags = '';
+  if (m.format) tags += '<span class="hero-tag">' + m.format + '</span>';
+  if (score) tags += '<span class="hero-tag hero-tag-star">★ ' + score + '/10</span>';
+  if (m.episodes) tags += '<span class="hero-tag">' + m.episodes + ' EP</span>';
+  if (m.status === 'RELEASING') tags += '<span class="hero-tag hero-tag-airing">Airing</span>';
+
+  info.innerHTML =
+    (tags ? '<div class="hero-tags">' + tags + '</div>' : '') +
+    '<h1 class="hero-title">' + escape(title) + '</h1>' +
+    (desc ? '<p class="hero-desc">' + escape(desc) + '</p>' : '') +
+    '<div class="hero-btns">' +
+      '<button class="hero-btn hero-btn-primary" data-id="' + m.id + '">▶ Watch Now</button>' +
+      '<button class="hero-btn" data-id="' + m.id + '">Details</button>' +
+    '</div>';
+
+  dots.innerHTML = heroData.map((_, i) =>
+    '<button class="hero-dot' + (i === index ? ' active' : '') + '" data-index="' + i + '"></button>'
+  ).join('');
+
+  info.querySelectorAll('.hero-btn').forEach(btn => {
+    btn.addEventListener('click', () => openAnime(btn.dataset.id));
+  });
+
+  dots.querySelectorAll('.hero-dot').forEach(dot => {
+    dot.addEventListener('click', () => {
+      stopHeroTimer();
+      showHeroSlide(parseInt(dot.dataset.index), info, dots);
+      startHeroTimer(info, dots);
+    });
+  });
+}
+
+function startHeroTimer(info, dots) {
+  stopHeroTimer();
+  heroTimer = setInterval(() => {
+    const next = (heroIndex + 1) % heroData.length;
+    showHeroSlide(next, info, dots);
+  }, 6000);
+}
+
+function stopHeroTimer() {
+  if (heroTimer) { clearInterval(heroTimer); heroTimer = null; }
+}
+
+document.getElementById('hero-slider').addEventListener('mouseenter', stopHeroTimer);
+document.getElementById('hero-slider').addEventListener('mouseleave', () => {
+  const info = document.getElementById('hero-info');
+  const dots = document.getElementById('hero-dots');
+  startHeroTimer(info, dots);
+});
+
+document.querySelector('.logo').addEventListener('click', e => {
+  e.preventDefault();
+  searchInput.value = '';
+  goHome();
+});
+
+/* ─── Trending Pagination ───────────────────────────────────── */
+
+let trendingPage = 1;
+const TRENDING_PER_PAGE = 18;
+
+async function loadTrendingPage(page) {
+  trendingPage = page;
+  try {
+    const res = await fetch(`${API}/trending?page=${page}&per_page=${TRENDING_PER_PAGE}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const items = data.results || [];
+    const grid = document.getElementById('trending-grid');
+    grid.innerHTML = items.map(m => renderCard(m)).join('');
+    renderTrendingNav(data);
+    grid.querySelectorAll('.anime-card').forEach(card => {
+      card.addEventListener('click', () => openAnime(card.dataset.id));
+    });
+  } catch {
+    document.getElementById('trending-grid').innerHTML = '<div class="no-results">Failed to load</div>';
+  }
+}
+
+function renderTrendingNav(data) {
+  const totalPages = Math.min(data.total ? Math.ceil(data.total / TRENDING_PER_PAGE) : 1, 20);
+  let navTop = document.getElementById('trending-nav-top');
+  let navBottom = document.getElementById('trending-nav-bottom');
+
+  if (!navTop) {
+    const section = document.querySelector('.section');
+    const header = section.querySelector('.section-header');
+    navTop = document.createElement('div');
+    navTop.id = 'trending-nav-top';
+    navTop.className = 'pagination-nav';
+    header.appendChild(navTop);
+  }
+
+  const html = buildPageNav(totalPages);
+  navTop.innerHTML = html;
+
+  navTop.querySelectorAll('.page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = parseInt(btn.dataset.page);
+      if (p !== trendingPage) loadTrendingPage(p);
+    });
+  });
+}
+
+function buildPageNav(totalPages) {
+  let html = '';
+  const maxVisible = 5;
+  let start = Math.max(1, trendingPage - Math.floor(maxVisible / 2));
+  let end = Math.min(totalPages, start + maxVisible - 1);
+  if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1);
+
+  if (trendingPage > 1) {
+    html += '<button class="page-btn" data-page="' + (trendingPage - 1) + '">◀</button>';
+  }
+  for (let i = start; i <= end; i++) {
+    html += '<button class="page-btn' + (i === trendingPage ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
+  }
+  if (trendingPage < totalPages) {
+    html += '<button class="page-btn" data-page="' + (trendingPage + 1) + '">▶</button>';
+  }
+  return html;
+}
+
+/* ─── Init ─────────────────────────────────────────────────── */
+
+fetchTrending().then(items => {
+  renderHeroSlider(items);
+  loadTrendingPage(1);
+});
+
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     mode = btn.dataset.mode;
-    searchInput.placeholder = mode === 'anime' ? 'Search anime titles...' : 'Search movies...';
+    searchInput.placeholder = mode === 'anime' ? 'Search anime...' : 'Search movies...';
     if (searchInput.value.trim()) doSearch();
   });
 });
@@ -42,6 +225,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (detailSection.style.display !== 'none') {
       showResults();
+    } else if (resultsSection.innerHTML && resultsSection.style.display !== 'none') {
+      goHome();
     }
   }
 });
@@ -50,6 +235,8 @@ async function doSearch() {
   const q = searchInput.value.trim();
   if (!q) return;
 
+  document.querySelector('.hero-slider').style.display = 'none';
+  document.querySelector('.section').style.display = 'none';
   detailSection.style.display = 'none';
   resultsSection.style.display = '';
 
@@ -62,6 +249,56 @@ async function doSearch() {
     resultsSection.innerHTML = '<div class="error">Search failed: ' + escape(err.message) + '</div>';
   }
 }
+
+function showResults() {
+  detailSection.style.display = 'none';
+  if (resultsSection.innerHTML.trim()) {
+    resultsSection.style.display = '';
+  } else {
+    goHome();
+  }
+}
+
+function goHome() {
+  detailSection.style.display = 'none';
+  resultsSection.style.display = 'none';
+  document.querySelector('.hero-slider').style.display = '';
+  document.querySelector('.section').style.display = '';
+}
+
+/* ─── Card Renderer ────────────────────────────────────────── */
+
+function renderCard(m) {
+  const title = m.title?.english || m.title?.romaji || m.title?.native || '?';
+  const img = m.coverImage?.large || m.coverImage?.medium || m.coverImage?.extraLarge || '';
+  const score = m.averageScore ? Math.round(m.averageScore / 10) : null;
+
+  let fmt = '';
+  if (m.format) {
+    const f = m.format === 'TV' ? 'TV' : m.format === 'MOVIE' ? 'Film' : m.format === 'ONA' ? 'ONA' : m.format === 'OVA' ? 'OVA' : m.format === 'SPECIAL' ? 'SP' : m.format.slice(0, 4);
+    fmt = '<div class="card-format">' + f + '</div>';
+  }
+
+  let chips = '';
+  if (m.seasonYear) chips += '<span class="card-chip">' + m.seasonYear + '</span>';
+  if (m.episodes) chips += '<span class="card-chip">EP ' + m.episodes + '</span>';
+  if (m.status === 'RELEASING') chips += '<span class="card-chip card-chip-airing">● Airing</span>';
+
+  return '<div class="anime-card" data-id="' + m.id + '">' +
+    '<div class="card-img-wrap">' +
+      (img ? '<img src="' + img + '" alt="' + escape(title) + '" loading="lazy">' : '') +
+      fmt +
+      (score ? '<div class="card-score">★ ' + score + '</div>' : '') +
+      '<div class="card-gradient"></div>' +
+    '</div>' +
+    '<div class="card-body">' +
+      '<div class="card-title">' + escape(title) + '</div>' +
+      (chips ? '<div class="card-chips">' + chips + '</div>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+/* ─── Search ───────────────────────────────────────────────── */
 
 function renderAnimeRows(items) {
   let rows = '';
@@ -169,14 +406,12 @@ async function searchMovie(q) {
   });
 }
 
-function showResults() {
-  detailSection.style.display = 'none';
-  resultsSection.style.display = '';
-}
-
+/* ─── Detail View ──────────────────────────────────────────── */
 
 async function openAnime(id) {
   anilistId = id;
+  document.querySelector('.hero-slider').style.display = 'none';
+  document.querySelector('.section').style.display = 'none';
   resultsSection.style.display = 'none';
   detailSection.style.display = 'block';
   detailSection.innerHTML = '<div class="detail-loading"><div class="spinner"></div>Loading...</div>';
@@ -208,7 +443,6 @@ async function openAnime(id) {
       }
     } catch {}
 
-    // Fallback: strip season suffixes ("Season 2", "S2", "Part X", trailing numbers)
     let baseTitle = title;
     if (!tmdbId) {
       baseTitle = title
@@ -231,7 +465,6 @@ async function openAnime(id) {
       }
     }
 
-    // Extract TMDB season number from title
     if (tmdbId && tmdbType === 'tv') {
       let seasonNum = 1;
       let m = title.match(/(?:Season|S|Part)\s*(\d+)/i);
@@ -319,7 +552,7 @@ function renderAnimeDetail(info, episodesRaw) {
       '</div>' +
     '</div>';
 
-  
+
   const all = flatten(episodesRaw);
   const grouped = {};
   all.forEach(ep => {
