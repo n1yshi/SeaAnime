@@ -30,7 +30,7 @@ body {
   padding: 0 24px;
 }
 
-/* ─── Top Bar ──────────────────────────────────────────── */
+
 
 .top-bar {
   position: sticky;
@@ -155,7 +155,7 @@ body {
   color: var(--text);
 }
 
-/* ─── Hero Slider ──────────────────────────────────────── */
+
 
 .hero-slider {
   position: relative;
@@ -338,7 +338,7 @@ body {
   width: 8px;
 }
 
-/* ─── Sections ─────────────────────────────────────────── */
+
 
 .main-content {
   padding-top: 8px;
@@ -365,7 +365,7 @@ body {
   letter-spacing: -0.5px;
 }
 
-/* ─── Anime Cards Grid ─────────────────────────────────── */
+
 
 .anime-grid {
   display: grid;
@@ -471,7 +471,7 @@ body {
   color: #4ade80;
 }
 
-/* ─── Content / Results / Detail ───────────────────────── */
+
 
 .content {
   padding: 20px 0;
@@ -935,7 +935,7 @@ body {
   border-color: rgba(255,255,255,0.2);
 }
 
-/* ─── Pagination ────────────────────────────────────────── */
+
 
 .pagination-nav {
   display: flex;

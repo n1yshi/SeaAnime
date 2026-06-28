@@ -14,7 +14,7 @@ const searchInput = document.getElementById('search-input');
 const resultsSection = document.getElementById('results-section');
 const detailSection = document.getElementById('detail-section');
 
-/* ─── Hero Slider ──────────────────────────────────────────── */
+
 
 let heroIndex = 0;
 let heroTimer = null;
@@ -123,7 +123,7 @@ document.querySelector('.logo').addEventListener('click', e => {
   goHome();
 });
 
-/* ─── Trending Pagination ───────────────────────────────────── */
+
 
 let trendingPage = 1;
 const TRENDING_PER_PAGE = 18;
@@ -190,7 +190,7 @@ function buildPageNav(totalPages) {
   return html;
 }
 
-/* ─── Init ─────────────────────────────────────────────────── */
+
 
 fetchTrending().then(items => {
   renderHeroSlider(items);
@@ -266,7 +266,7 @@ function goHome() {
   document.querySelector('.section').style.display = '';
 }
 
-/* ─── Card Renderer ────────────────────────────────────────── */
+
 
 function renderCard(m) {
   const title = m.title?.english || m.title?.romaji || m.title?.native || '?';
@@ -298,7 +298,7 @@ function renderCard(m) {
   '</div>';
 }
 
-/* ─── Search ───────────────────────────────────────────────── */
+
 
 function renderAnimeRows(items) {
   let rows = '';
@@ -406,7 +406,7 @@ async function searchMovie(q) {
   });
 }
 
-/* ─── Detail View ──────────────────────────────────────────── */
+
 
 async function openAnime(id) {
   anilistId = id;
